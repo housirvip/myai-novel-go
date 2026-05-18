@@ -1,0 +1,29 @@
+# Build artifacts
+bin/
+*.exe
+*.test
+*.out
+
+# Local env / secrets
+.env
+.env.local
+*.local
+
+# SQLite runtime files
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Logs
+logs/
+*.log
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage.out
+coverage.html

@@ -1,0 +1,76 @@
+# 默认场景(无 profile):server 用 SQLite + mock provider 一键起。
+# `docker compose --profile mysql up` 启 MySQL + server 走 MySQL。
+# `docker compose --profile real-llm up` 透传 OPENAI_API_KEY 给 server(从 .env 读)。
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: myai-novel-go:dev
+    container_name: myai-novel-go
+    ports:
+      - "3000:3000"
+    environment:
+      SERVER_HOST: "0.0.0.0"
+      SERVER_PORT: "3000"
+      DB_CLIENT: "sqlite"
+      DB_SQLITE_PATH: "/app/data/novel.db"
+      LLM_PROVIDER: "${LLM_PROVIDER:-mock}"
+      LOG_FORMAT: "json"
+      LOG_LEVEL: "info"
+      AUTH_SESSION_SECRET: "${AUTH_SESSION_SECRET:-dev-session-secret-change-me-please}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+    volumes:
+      - novel_data:/app/data
+      - novel_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:3000/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 4
+      start_period: 5s
+    restart: unless-stopped
+
+  # MySQL profile:用真实 MySQL 跑迁移和工作流冒烟。
+  mysql:
+    image: mysql:8.4
+    profiles: ["mysql"]
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpw
+      MYSQL_DATABASE: myai_novel
+      MYSQL_USER: novel
+      MYSQL_PASSWORD: novelpw
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-prootpw"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # server-mysql 是 server 服务在 mysql profile 下的变体,
+  # 显式 depends_on mysql 健康才启动。这样不用动默认服务的 env。
+  server-mysql:
+    extends: server
+    profiles: ["mysql"]
+    container_name: myai-novel-go-mysql
+    environment:
+      DB_CLIENT: "mysql"
+      DB_HOST: "mysql"
+      DB_PORT: "3306"
+      DB_NAME: "myai_novel"
+      DB_USER: "novel"
+      DB_PASSWORD: "novelpw"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "3001:3000"
+
+volumes:
+  novel_data:
+  novel_logs:
+  mysql_data:

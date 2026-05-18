@@ -1,0 +1,66 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS 包含本地开发环境验证;ubuntu 是 production 实际部署平台
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          check-latest: true
+          cache: true
+
+      - name: go mod download
+        run: go mod download
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test (race)
+        run: go test -race -count=1 ./...
+
+      - name: go build (server + novel)
+        run: |
+          go build -o bin/server ./cmd/server
+          go build -o bin/novel  ./cmd/novel
+          ./bin/server -h 2>&1 | head -5 || true
+          ./bin/novel --help 2>&1 | head -5
+
+  docker-build:
+    runs-on: ubuntu-latest
+    # 只在 push 到主分支时跑 docker build,PR 时跳过节省 CI 时间
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: docker build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: myai-novel-go:ci
+      - name: smoke run
+        run: |
+          docker run -d --name novel -p 3000:3000 myai-novel-go:ci
+          for i in {1..20}; do
+            if curl -fs http://127.0.0.1:3000/health; then
+              echo "health ok"; break
+            fi
+            sleep 1
+          done
+          curl -fs http://127.0.0.1:3000/api/meta
+          docker logs novel | tail -30
+          docker rm -f novel
