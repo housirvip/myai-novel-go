@@ -20,22 +20,22 @@ type Book struct {
 func (Book) TableName() string { return "books" }
 
 type Outline struct {
-	ID              int64   `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	BookID          int64   `gorm:"column:book_id;not null;index:idx_outlines_book" json:"bookId"`
-	VolumeNo        *int    `gorm:"column:volume_no" json:"volumeNo"`
-	VolumeTitle     *string `gorm:"column:volume_title;type:varchar(255)" json:"volumeTitle"`
-	ChapterStartNo  *int    `gorm:"column:chapter_start_no" json:"chapterStartNo"`
-	ChapterEndNo    *int    `gorm:"column:chapter_end_no" json:"chapterEndNo"`
-	OutlineLevel    string  `gorm:"column:outline_level;type:varchar(32);not null" json:"outlineLevel"`
-	Title           string  `gorm:"column:title;type:varchar(255);not null" json:"title"`
-	StoryCore       *string `gorm:"column:story_core;type:text" json:"storyCore"`
-	MainPlot        *string `gorm:"column:main_plot;type:text" json:"mainPlot"`
-	SubPlot         *string `gorm:"column:sub_plot;type:text" json:"subPlot"`
-	Foreshadowing   *string `gorm:"column:foreshadowing;type:text" json:"foreshadowing"`
-	ExpectedPayoff  *string `gorm:"column:expected_payoff;type:text" json:"expectedPayoff"`
-	Notes           *string `gorm:"column:notes;type:text" json:"notes"`
-	CreatedAt       string  `gorm:"column:created_at;not null" json:"createdAt"`
-	UpdatedAt       string  `gorm:"column:updated_at;not null" json:"updatedAt"`
+	ID             int64   `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	BookID         int64   `gorm:"column:book_id;not null;index:idx_outlines_book" json:"bookId"`
+	VolumeNo       *int    `gorm:"column:volume_no" json:"volumeNo"`
+	VolumeTitle    *string `gorm:"column:volume_title;type:varchar(255)" json:"volumeTitle"`
+	ChapterStartNo *int    `gorm:"column:chapter_start_no" json:"chapterStartNo"`
+	ChapterEndNo   *int    `gorm:"column:chapter_end_no" json:"chapterEndNo"`
+	OutlineLevel   string  `gorm:"column:outline_level;type:varchar(32);not null" json:"outlineLevel"`
+	Title          string  `gorm:"column:title;type:varchar(255);not null" json:"title"`
+	StoryCore      *string `gorm:"column:story_core;type:text" json:"storyCore"`
+	MainPlot       *string `gorm:"column:main_plot;type:text" json:"mainPlot"`
+	SubPlot        *string `gorm:"column:sub_plot;type:text" json:"subPlot"`
+	Foreshadowing  *string `gorm:"column:foreshadowing;type:text" json:"foreshadowing"`
+	ExpectedPayoff *string `gorm:"column:expected_payoff;type:text" json:"expectedPayoff"`
+	Notes          *string `gorm:"column:notes;type:text" json:"notes"`
+	CreatedAt      string  `gorm:"column:created_at;not null" json:"createdAt"`
+	UpdatedAt      string  `gorm:"column:updated_at;not null" json:"updatedAt"`
 }
 
 func (Outline) TableName() string { return "outlines" }
@@ -202,83 +202,83 @@ type ChapterPlan struct {
 func (ChapterPlan) TableName() string { return "chapter_plans" }
 
 type ChapterDraft struct {
-	ID             int64   `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	BookID         int64   `gorm:"column:book_id;not null;index:idx_chapter_drafts_book_status,priority:1" json:"bookId"`
-	ChapterID      int64   `gorm:"column:chapter_id;not null;index" json:"chapterId"`
-	ChapterNo      int     `gorm:"column:chapter_no;not null" json:"chapterNo"`
-	VersionNo      int     `gorm:"column:version_no;not null" json:"versionNo"`
-	BasedOnPlanID  *int64  `gorm:"column:based_on_plan_id" json:"basedOnPlanId"`
-	BasedOnDraftID *int64  `gorm:"column:based_on_draft_id" json:"basedOnDraftId"`
-	BasedOnReviewID *int64 `gorm:"column:based_on_review_id" json:"basedOnReviewId"`
-	Status         string  `gorm:"column:status;type:varchar(32);not null;default:'active';index:idx_chapter_drafts_book_status,priority:2" json:"status"`
-	Content        string  `gorm:"column:content;type:longtext;not null" json:"content"`
-	Summary        *string `gorm:"column:summary;type:text" json:"summary"`
-	WordCount      *int    `gorm:"column:word_count" json:"wordCount"`
-	Model          *string `gorm:"column:model;type:varchar(255)" json:"model"`
-	Provider       *string `gorm:"column:provider;type:varchar(64)" json:"provider"`
-	SourceType     string  `gorm:"column:source_type;type:varchar(32);not null" json:"sourceType"`
-	CreatedAt      string  `gorm:"column:created_at;not null" json:"createdAt"`
-	UpdatedAt      string  `gorm:"column:updated_at;not null" json:"updatedAt"`
+	ID              int64   `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	BookID          int64   `gorm:"column:book_id;not null;index:idx_chapter_drafts_book_status,priority:1" json:"bookId"`
+	ChapterID       int64   `gorm:"column:chapter_id;not null;index" json:"chapterId"`
+	ChapterNo       int     `gorm:"column:chapter_no;not null" json:"chapterNo"`
+	VersionNo       int     `gorm:"column:version_no;not null" json:"versionNo"`
+	BasedOnPlanID   *int64  `gorm:"column:based_on_plan_id" json:"basedOnPlanId"`
+	BasedOnDraftID  *int64  `gorm:"column:based_on_draft_id" json:"basedOnDraftId"`
+	BasedOnReviewID *int64  `gorm:"column:based_on_review_id" json:"basedOnReviewId"`
+	Status          string  `gorm:"column:status;type:varchar(32);not null;default:'active';index:idx_chapter_drafts_book_status,priority:2" json:"status"`
+	Content         string  `gorm:"column:content;type:longtext;not null" json:"content"`
+	Summary         *string `gorm:"column:summary;type:text" json:"summary"`
+	WordCount       *int    `gorm:"column:word_count" json:"wordCount"`
+	Model           *string `gorm:"column:model;type:varchar(255)" json:"model"`
+	Provider        *string `gorm:"column:provider;type:varchar(64)" json:"provider"`
+	SourceType      string  `gorm:"column:source_type;type:varchar(32);not null" json:"sourceType"`
+	CreatedAt       string  `gorm:"column:created_at;not null" json:"createdAt"`
+	UpdatedAt       string  `gorm:"column:updated_at;not null" json:"updatedAt"`
 }
 
 func (ChapterDraft) TableName() string { return "chapter_drafts" }
 
 type ChapterReview struct {
-	ID                 int64   `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	BookID             int64   `gorm:"column:book_id;not null;index:idx_chapter_reviews_book_status,priority:1" json:"bookId"`
-	ChapterID          int64   `gorm:"column:chapter_id;not null;index" json:"chapterId"`
-	ChapterNo          int     `gorm:"column:chapter_no;not null" json:"chapterNo"`
-	DraftID            int64   `gorm:"column:draft_id;not null" json:"draftId"`
-	VersionNo          int     `gorm:"column:version_no;not null" json:"versionNo"`
-	Status             string  `gorm:"column:status;type:varchar(32);not null;default:'active';index:idx_chapter_reviews_book_status,priority:2" json:"status"`
-	Summary            *string `gorm:"column:summary;type:text" json:"summary"`
-	Issues             *string `gorm:"column:issues;type:text" json:"issues"`
-	Risks              *string `gorm:"column:risks;type:text" json:"risks"`
-	ContinuityChecks   *string `gorm:"column:continuity_checks;type:text" json:"continuityChecks"`
-	RepairSuggestions  *string `gorm:"column:repair_suggestions;type:text" json:"repairSuggestions"`
-	RawResult          string  `gorm:"column:raw_result;type:longtext;not null" json:"rawResult"`
-	Model              *string `gorm:"column:model;type:varchar(255)" json:"model"`
-	Provider           *string `gorm:"column:provider;type:varchar(64)" json:"provider"`
-	SourceType         string  `gorm:"column:source_type;type:varchar(32);not null" json:"sourceType"`
-	CreatedAt          string  `gorm:"column:created_at;not null" json:"createdAt"`
-	UpdatedAt          string  `gorm:"column:updated_at;not null" json:"updatedAt"`
+	ID                int64   `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	BookID            int64   `gorm:"column:book_id;not null;index:idx_chapter_reviews_book_status,priority:1" json:"bookId"`
+	ChapterID         int64   `gorm:"column:chapter_id;not null;index" json:"chapterId"`
+	ChapterNo         int     `gorm:"column:chapter_no;not null" json:"chapterNo"`
+	DraftID           int64   `gorm:"column:draft_id;not null" json:"draftId"`
+	VersionNo         int     `gorm:"column:version_no;not null" json:"versionNo"`
+	Status            string  `gorm:"column:status;type:varchar(32);not null;default:'active';index:idx_chapter_reviews_book_status,priority:2" json:"status"`
+	Summary           *string `gorm:"column:summary;type:text" json:"summary"`
+	Issues            *string `gorm:"column:issues;type:text" json:"issues"`
+	Risks             *string `gorm:"column:risks;type:text" json:"risks"`
+	ContinuityChecks  *string `gorm:"column:continuity_checks;type:text" json:"continuityChecks"`
+	RepairSuggestions *string `gorm:"column:repair_suggestions;type:text" json:"repairSuggestions"`
+	RawResult         string  `gorm:"column:raw_result;type:longtext;not null" json:"rawResult"`
+	Model             *string `gorm:"column:model;type:varchar(255)" json:"model"`
+	Provider          *string `gorm:"column:provider;type:varchar(64)" json:"provider"`
+	SourceType        string  `gorm:"column:source_type;type:varchar(32);not null" json:"sourceType"`
+	CreatedAt         string  `gorm:"column:created_at;not null" json:"createdAt"`
+	UpdatedAt         string  `gorm:"column:updated_at;not null" json:"updatedAt"`
 }
 
 func (ChapterReview) TableName() string { return "chapter_reviews" }
 
 type ChapterFinal struct {
-	ID            int64   `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	BookID        int64   `gorm:"column:book_id;not null;index:idx_chapter_finals_book_status,priority:1" json:"bookId"`
-	ChapterID     int64   `gorm:"column:chapter_id;not null;index" json:"chapterId"`
-	ChapterNo     int     `gorm:"column:chapter_no;not null" json:"chapterNo"`
-	VersionNo     int     `gorm:"column:version_no;not null" json:"versionNo"`
-	BasedOnDraftID *int64 `gorm:"column:based_on_draft_id" json:"basedOnDraftId"`
-	Status        string  `gorm:"column:status;type:varchar(32);not null;default:'active';index:idx_chapter_finals_book_status,priority:2" json:"status"`
-	Content       string  `gorm:"column:content;type:longtext;not null" json:"content"`
-	Summary       *string `gorm:"column:summary;type:text" json:"summary"`
-	WordCount     *int    `gorm:"column:word_count" json:"wordCount"`
-	SourceType    string  `gorm:"column:source_type;type:varchar(32);not null" json:"sourceType"`
-	CreatedAt     string  `gorm:"column:created_at;not null" json:"createdAt"`
-	UpdatedAt     string  `gorm:"column:updated_at;not null" json:"updatedAt"`
+	ID             int64   `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	BookID         int64   `gorm:"column:book_id;not null;index:idx_chapter_finals_book_status,priority:1" json:"bookId"`
+	ChapterID      int64   `gorm:"column:chapter_id;not null;index" json:"chapterId"`
+	ChapterNo      int     `gorm:"column:chapter_no;not null" json:"chapterNo"`
+	VersionNo      int     `gorm:"column:version_no;not null" json:"versionNo"`
+	BasedOnDraftID *int64  `gorm:"column:based_on_draft_id" json:"basedOnDraftId"`
+	Status         string  `gorm:"column:status;type:varchar(32);not null;default:'active';index:idx_chapter_finals_book_status,priority:2" json:"status"`
+	Content        string  `gorm:"column:content;type:longtext;not null" json:"content"`
+	Summary        *string `gorm:"column:summary;type:text" json:"summary"`
+	WordCount      *int    `gorm:"column:word_count" json:"wordCount"`
+	SourceType     string  `gorm:"column:source_type;type:varchar(32);not null" json:"sourceType"`
+	CreatedAt      string  `gorm:"column:created_at;not null" json:"createdAt"`
+	UpdatedAt      string  `gorm:"column:updated_at;not null" json:"updatedAt"`
 }
 
 func (ChapterFinal) TableName() string { return "chapter_finals" }
 
 type RetrievalDocument struct {
-	ID                  int64   `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	BookID              int64   `gorm:"column:book_id;not null;index:idx_retrieval_documents_book_layer,priority:1;index:idx_retrieval_documents_book_entity,priority:1;index:idx_retrieval_documents_book_chapter,priority:1" json:"bookId"`
-	EntityType          *string `gorm:"column:entity_type;type:varchar(32);index:idx_retrieval_documents_book_entity,priority:2" json:"entityType"`
-	EntityID            *int64  `gorm:"column:entity_id;index:idx_retrieval_documents_book_entity,priority:3" json:"entityId"`
-	Layer               string  `gorm:"column:layer;type:varchar(32);not null;index:idx_retrieval_documents_book_layer,priority:2" json:"layer"`
-	ChunkKey            string  `gorm:"column:chunk_key;type:varchar(255);not null" json:"chunkKey"`
-	ChapterNo           *int    `gorm:"column:chapter_no;index:idx_retrieval_documents_book_chapter,priority:2" json:"chapterNo"`
-	PayloadJSON         *string `gorm:"column:payload_json;type:longtext" json:"payloadJson"`
-	Text                string  `gorm:"column:text;type:longtext;not null" json:"text"`
-	EmbeddingModel      *string `gorm:"column:embedding_model;type:varchar(128)" json:"embeddingModel"`
-	EmbeddingVectorRef  *string `gorm:"column:embedding_vector_ref;type:varchar(255)" json:"embeddingVectorRef"`
-	Status              string  `gorm:"column:status;type:varchar(32);not null;default:'active'" json:"status"`
-	CreatedAt           string  `gorm:"column:created_at;not null" json:"createdAt"`
-	UpdatedAt           string  `gorm:"column:updated_at;not null" json:"updatedAt"`
+	ID                 int64   `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	BookID             int64   `gorm:"column:book_id;not null;index:idx_retrieval_documents_book_layer,priority:1;index:idx_retrieval_documents_book_entity,priority:1;index:idx_retrieval_documents_book_chapter,priority:1" json:"bookId"`
+	EntityType         *string `gorm:"column:entity_type;type:varchar(32);index:idx_retrieval_documents_book_entity,priority:2" json:"entityType"`
+	EntityID           *int64  `gorm:"column:entity_id;index:idx_retrieval_documents_book_entity,priority:3" json:"entityId"`
+	Layer              string  `gorm:"column:layer;type:varchar(32);not null;index:idx_retrieval_documents_book_layer,priority:2" json:"layer"`
+	ChunkKey           string  `gorm:"column:chunk_key;type:varchar(255);not null" json:"chunkKey"`
+	ChapterNo          *int    `gorm:"column:chapter_no;index:idx_retrieval_documents_book_chapter,priority:2" json:"chapterNo"`
+	PayloadJSON        *string `gorm:"column:payload_json;type:longtext" json:"payloadJson"`
+	Text               string  `gorm:"column:text;type:longtext;not null" json:"text"`
+	EmbeddingModel     *string `gorm:"column:embedding_model;type:varchar(128)" json:"embeddingModel"`
+	EmbeddingVectorRef *string `gorm:"column:embedding_vector_ref;type:varchar(255)" json:"embeddingVectorRef"`
+	Status             string  `gorm:"column:status;type:varchar(32);not null;default:'active'" json:"status"`
+	CreatedAt          string  `gorm:"column:created_at;not null" json:"createdAt"`
+	UpdatedAt          string  `gorm:"column:updated_at;not null" json:"updatedAt"`
 }
 
 func (RetrievalDocument) TableName() string { return "retrieval_documents" }
@@ -307,40 +307,40 @@ type RetrievalFact struct {
 func (RetrievalFact) TableName() string { return "retrieval_facts" }
 
 type StoryEvent struct {
-	ID                     int64   `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	BookID                 int64   `gorm:"column:book_id;not null;index:idx_story_events_book_chapter,priority:1;index:idx_story_events_book_status,priority:1" json:"bookId"`
-	ChapterID              *int64  `gorm:"column:chapter_id" json:"chapterId"`
-	ChapterNo              *int    `gorm:"column:chapter_no;index:idx_story_events_book_chapter,priority:2" json:"chapterNo"`
-	EventType              string  `gorm:"column:event_type;type:varchar(32);not null" json:"eventType"`
-	Title                  string  `gorm:"column:title;type:varchar(255);not null" json:"title"`
-	Summary                string  `gorm:"column:summary;type:text;not null" json:"summary"`
-	ParticipantEntityRefs  *string `gorm:"column:participant_entity_refs;type:text" json:"participantEntityRefs"`
-	LocationLabel          *string `gorm:"column:location_label;type:varchar(255)" json:"locationLabel"`
-	TriggerText            *string `gorm:"column:trigger_text;type:text" json:"triggerText"`
-	OutcomeText            *string `gorm:"column:outcome_text;type:text" json:"outcomeText"`
-	UnresolvedImpact       *string `gorm:"column:unresolved_impact;type:text" json:"unresolvedImpact"`
-	HookRefs               *string `gorm:"column:hook_refs;type:text" json:"hookRefs"`
-	Status                 string  `gorm:"column:status;type:varchar(32);not null;default:'active';index:idx_story_events_book_status,priority:2" json:"status"`
-	CreatedAt              string  `gorm:"column:created_at;not null" json:"createdAt"`
-	UpdatedAt              string  `gorm:"column:updated_at;not null" json:"updatedAt"`
+	ID                    int64   `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	BookID                int64   `gorm:"column:book_id;not null;index:idx_story_events_book_chapter,priority:1;index:idx_story_events_book_status,priority:1" json:"bookId"`
+	ChapterID             *int64  `gorm:"column:chapter_id" json:"chapterId"`
+	ChapterNo             *int    `gorm:"column:chapter_no;index:idx_story_events_book_chapter,priority:2" json:"chapterNo"`
+	EventType             string  `gorm:"column:event_type;type:varchar(32);not null" json:"eventType"`
+	Title                 string  `gorm:"column:title;type:varchar(255);not null" json:"title"`
+	Summary               string  `gorm:"column:summary;type:text;not null" json:"summary"`
+	ParticipantEntityRefs *string `gorm:"column:participant_entity_refs;type:text" json:"participantEntityRefs"`
+	LocationLabel         *string `gorm:"column:location_label;type:varchar(255)" json:"locationLabel"`
+	TriggerText           *string `gorm:"column:trigger_text;type:text" json:"triggerText"`
+	OutcomeText           *string `gorm:"column:outcome_text;type:text" json:"outcomeText"`
+	UnresolvedImpact      *string `gorm:"column:unresolved_impact;type:text" json:"unresolvedImpact"`
+	HookRefs              *string `gorm:"column:hook_refs;type:text" json:"hookRefs"`
+	Status                string  `gorm:"column:status;type:varchar(32);not null;default:'active';index:idx_story_events_book_status,priority:2" json:"status"`
+	CreatedAt             string  `gorm:"column:created_at;not null" json:"createdAt"`
+	UpdatedAt             string  `gorm:"column:updated_at;not null" json:"updatedAt"`
 }
 
 func (StoryEvent) TableName() string { return "story_events" }
 
 type ChapterSegment struct {
-	ID            int64   `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
-	BookID        int64   `gorm:"column:book_id;not null;index:idx_chapter_segments_book_chapter,priority:1" json:"bookId"`
-	ChapterID     int64   `gorm:"column:chapter_id;not null" json:"chapterId"`
-	ChapterNo     int     `gorm:"column:chapter_no;not null;index:idx_chapter_segments_book_chapter,priority:2" json:"chapterNo"`
-	SegmentIndex  int     `gorm:"column:segment_index;not null" json:"segmentIndex"`
-	SourceType    string  `gorm:"column:source_type;type:varchar(32);not null" json:"sourceType"`
-	Text          string  `gorm:"column:text;type:longtext;not null" json:"text"`
-	Summary       *string `gorm:"column:summary;type:text" json:"summary"`
-	EventRefs     *string `gorm:"column:event_refs;type:text" json:"eventRefs"`
-	Metadata      *string `gorm:"column:metadata;type:text" json:"metadata"`
-	Status        string  `gorm:"column:status;type:varchar(32);not null;default:'active'" json:"status"`
-	CreatedAt     string  `gorm:"column:created_at;not null" json:"createdAt"`
-	UpdatedAt     string  `gorm:"column:updated_at;not null" json:"updatedAt"`
+	ID           int64   `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	BookID       int64   `gorm:"column:book_id;not null;index:idx_chapter_segments_book_chapter,priority:1" json:"bookId"`
+	ChapterID    int64   `gorm:"column:chapter_id;not null" json:"chapterId"`
+	ChapterNo    int     `gorm:"column:chapter_no;not null;index:idx_chapter_segments_book_chapter,priority:2" json:"chapterNo"`
+	SegmentIndex int     `gorm:"column:segment_index;not null" json:"segmentIndex"`
+	SourceType   string  `gorm:"column:source_type;type:varchar(32);not null" json:"sourceType"`
+	Text         string  `gorm:"column:text;type:longtext;not null" json:"text"`
+	Summary      *string `gorm:"column:summary;type:text" json:"summary"`
+	EventRefs    *string `gorm:"column:event_refs;type:text" json:"eventRefs"`
+	Metadata     *string `gorm:"column:metadata;type:text" json:"metadata"`
+	Status       string  `gorm:"column:status;type:varchar(32);not null;default:'active'" json:"status"`
+	CreatedAt    string  `gorm:"column:created_at;not null" json:"createdAt"`
+	UpdatedAt    string  `gorm:"column:updated_at;not null" json:"updatedAt"`
 }
 
 func (ChapterSegment) TableName() string { return "chapter_segments" }

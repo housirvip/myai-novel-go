@@ -7,6 +7,8 @@ import (
 	"gorm.io/gorm"
 
 	"myai-novel-go/internal/config"
+	"myai-novel-go/internal/domain/shared"
+	"myai-novel-go/internal/server/middleware"
 )
 
 const buildVersion = "0.1.0"
@@ -22,11 +24,11 @@ func RegisterHealth(r *gin.RouterGroup, cfg *config.Config, gdb *gorm.DB) {
 	r.GET("/healthz/ready", func(c *gin.Context) {
 		sqlDB, err := gdb.DB()
 		if err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not_ready", "reason": err.Error()})
+			middleware.AbortWithError(c, shared.NewAppErrorWithDetails(http.StatusServiceUnavailable, "service_unavailable", "database not ready", err.Error()))
 			return
 		}
 		if err := sqlDB.PingContext(c.Request.Context()); err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not_ready", "reason": err.Error()})
+			middleware.AbortWithError(c, shared.NewAppErrorWithDetails(http.StatusServiceUnavailable, "service_unavailable", "database not ready", err.Error()))
 			return
 		}
 		ok(c, gin.H{"status": "ready"})

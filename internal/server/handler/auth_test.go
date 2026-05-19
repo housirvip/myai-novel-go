@@ -34,10 +34,10 @@ func TestAuthFlow(t *testing.T) {
 	r2, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer r2.Body.Close()
-	var body struct{ User map[string]any }
+	var body struct{ Data struct{ User map[string]any } }
 	require.NoError(t, json.NewDecoder(r2.Body).Decode(&body))
-	require.NotNil(t, body.User)
-	require.Equal(t, "alice@example.com", body.User["email"])
+	require.NotNil(t, body.Data.User)
+	require.Equal(t, "alice@example.com", body.Data.User["email"])
 
 	// 错误密码 login → 401
 	bad, err := http.Post(srv.URL+"/api/auth/login", "application/json",
@@ -70,17 +70,53 @@ func TestUserSettings_RequireAuth(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
 
-// TestUserSettings_RoundTrip 登录 → PUT 覆盖 → GET 看到 → DELETE 清空。
+// TestUserSettings_RoundTrip 登录 → PUT 覆盖 → GET 看到 view → DELETE 回落到默认值。
 func TestUserSettings_RoundTrip(t *testing.T) {
-	srv, _ := testutil.NewTestServer(t, nil)
+	srv, _ := testutil.NewTestServer(t, map[string]string{
+		"LLM_PROVIDER":           "mock",
+		"LLM_DEFAULT_MAX_TOKENS": "4096",
+		"LLM_LOW_MODEL":          "env-low",
+		"LLM_MID_MODEL":          "env-mid",
+		"LLM_HIGH_MODEL":         "env-high",
+		"OPENAI_BASE_URL":        "https://env-openai.example/v1",
+	})
 
-	// 注册并拿到 cookie
 	resp, err := http.Post(srv.URL+"/api/auth/register", "application/json",
 		strings.NewReader(`{"email":"bob@example.com","password":"hunter22hunter22","displayName":"Bob"}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	cookieVal := extractCookieValue(resp.Header.Get("Set-Cookie"))
+
+	type secretField struct {
+		HasValue    bool    `json:"hasValue"`
+		MaskedValue *string `json:"maskedValue"`
+	}
+	type runtimeSettingsView struct {
+		Provider         *string     `json:"provider"`
+		Model            *string     `json:"model"`
+		LowModel         *string     `json:"lowModel"`
+		MidModel         *string     `json:"midModel"`
+		HighModel        *string     `json:"highModel"`
+		DefaultMaxTokens *int        `json:"defaultMaxTokens"`
+		OpenAIAPIKey     secretField `json:"openaiApiKey"`
+		OpenAIBaseURL    *string     `json:"openaiBaseUrl"`
+		AnthropicAPIKey  secretField `json:"anthropicApiKey"`
+		CustomLLMAPIKey  secretField `json:"customLlmApiKey"`
+	}
+	type settingsView struct {
+		Overrides      runtimeSettingsView `json:"overrides"`
+		ServerDefaults runtimeSettingsView `json:"serverDefaults"`
+		Effective      runtimeSettingsView `json:"effective"`
+		Capabilities   struct {
+			AllowedProviders           []string        `json:"allowedProviders"`
+			ProviderAvailability       map[string]bool `json:"providerAvailability"`
+			SupportsSensitiveOverrides bool            `json:"supportsSensitiveOverrides"`
+		} `json:"capabilities"`
+	}
+	type envelope struct {
+		Data settingsView `json:"data"`
+	}
 
 	doReq := func(method, path string, body string) *http.Response {
 		req, _ := http.NewRequest(method, srv.URL+path, bytes.NewBufferString(body))
@@ -91,31 +127,56 @@ func TestUserSettings_RoundTrip(t *testing.T) {
 		return r
 	}
 
-	// PUT 覆盖
-	r1 := doReq("PUT", "/api/user-settings/runtime", `{"llmProvider":"openai","openaiApiKey":"sk-test"}`)
-	defer r1.Body.Close()
-	require.Equal(t, http.StatusOK, r1.StatusCode)
+	getSettings := func(resp *http.Response) envelope {
+		defer resp.Body.Close()
+		var got envelope
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+		return got
+	}
 
-	// GET 应能看到
-	r2 := doReq("GET", "/api/user-settings/runtime", "")
-	defer r2.Body.Close()
-	require.Equal(t, http.StatusOK, r2.StatusCode)
-	var got map[string]any
-	require.NoError(t, json.NewDecoder(r2.Body).Decode(&got))
-	require.Equal(t, "openai", got["llmProvider"])
-	require.Equal(t, "sk-test", got["openaiApiKey"])
+	initialResp := doReq("GET", "/api/user-settings/runtime", "")
+	require.Equal(t, http.StatusOK, initialResp.StatusCode)
+	initial := getSettings(initialResp)
+	require.Equal(t, "mock", *initial.Data.ServerDefaults.Provider)
+	require.Equal(t, "mock-v1", *initial.Data.ServerDefaults.Model)
+	require.Equal(t, "env-low", *initial.Data.ServerDefaults.LowModel)
+	require.Equal(t, "env-mid", *initial.Data.ServerDefaults.MidModel)
+	require.Equal(t, "env-high", *initial.Data.ServerDefaults.HighModel)
+	require.Equal(t, 4096, *initial.Data.ServerDefaults.DefaultMaxTokens)
+	require.False(t, initial.Data.Overrides.OpenAIAPIKey.HasValue)
+	require.Equal(t, []string{"mock", "openai", "anthropic", "custom"}, initial.Data.Capabilities.AllowedProviders)
+	require.False(t, initial.Data.Capabilities.ProviderAvailability["openai"])
+	require.True(t, initial.Data.Capabilities.SupportsSensitiveOverrides)
 
-	// DELETE 清空
-	r3 := doReq("DELETE", "/api/user-settings/runtime", "")
-	defer r3.Body.Close()
-	require.Equal(t, http.StatusOK, r3.StatusCode)
+	putResp := doReq("PUT", "/api/user-settings/runtime", `{"llmProvider":"openai","llmModel":"user-generic-model","llmLowModel":"user-low-model","llmDefaultMaxTokens":8192,"openaiApiKey":"sk-user-secret-1234","openaiBaseUrl":"https://openai.example.test/v1"}`)
+	require.Equal(t, http.StatusOK, putResp.StatusCode)
+	updated := getSettings(putResp)
+	require.Equal(t, "openai", *updated.Data.Overrides.Provider)
+	require.Equal(t, "user-generic-model", *updated.Data.Overrides.Model)
+	require.Equal(t, "user-low-model", *updated.Data.Overrides.LowModel)
+	require.Equal(t, 8192, *updated.Data.Overrides.DefaultMaxTokens)
+	require.True(t, updated.Data.Overrides.OpenAIAPIKey.HasValue)
+	require.NotNil(t, updated.Data.Overrides.OpenAIAPIKey.MaskedValue)
+	require.Equal(t, "sk-u...1234", *updated.Data.Overrides.OpenAIAPIKey.MaskedValue)
+	require.Equal(t, "openai", *updated.Data.Effective.Provider)
+	require.Equal(t, "user-generic-model", *updated.Data.Effective.Model)
+	require.Equal(t, "user-low-model", *updated.Data.Effective.LowModel)
+	require.Equal(t, "env-mid", *updated.Data.Effective.MidModel)
+	require.Equal(t, "env-high", *updated.Data.Effective.HighModel)
+	require.Equal(t, 8192, *updated.Data.Effective.DefaultMaxTokens)
+	require.True(t, updated.Data.Capabilities.ProviderAvailability["openai"])
 
-	// 再 GET 应该是空
-	r4 := doReq("GET", "/api/user-settings/runtime", "")
-	defer r4.Body.Close()
-	var got2 map[string]any
-	require.NoError(t, json.NewDecoder(r4.Body).Decode(&got2))
-	require.Nil(t, got2["llmProvider"])
+	deleteResp := doReq("DELETE", "/api/user-settings/runtime", "")
+	require.Equal(t, http.StatusOK, deleteResp.StatusCode)
+	cleared := getSettings(deleteResp)
+	require.Nil(t, cleared.Data.Overrides.Provider)
+	require.Equal(t, "mock", *cleared.Data.Effective.Provider)
+	require.Equal(t, "mock-v1", *cleared.Data.Effective.Model)
+	require.Equal(t, "env-low", *cleared.Data.Effective.LowModel)
+	require.Equal(t, "env-mid", *cleared.Data.Effective.MidModel)
+	require.Equal(t, "env-high", *cleared.Data.Effective.HighModel)
+	require.Equal(t, 4096, *cleared.Data.Effective.DefaultMaxTokens)
+	require.False(t, cleared.Data.Effective.OpenAIAPIKey.HasValue)
 }
 
 // TestMetaEndpoint /api/meta 返回 meta 信息。
@@ -125,10 +186,15 @@ func TestMetaEndpoint(t *testing.T) {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	var meta map[string]any
+	var meta struct {
+		Data struct {
+			Name    string `json:"name"`
+			Version string `json:"version"`
+		}
+	}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&meta))
-	require.Equal(t, "myai-novel-go", meta["name"])
-	require.Equal(t, "0.1.0", meta["version"])
+	require.Equal(t, "myai-novel-go", meta.Data.Name)
+	require.Equal(t, "0.1.0", meta.Data.Version)
 }
 
 // extractCookieValue 从 Set-Cookie 头里取出 cookie value(分号前那一段去掉 name=)。

@@ -9,9 +9,9 @@ import (
 	"myai-novel-go/internal/domain/shared"
 )
 
-func ok(c *gin.Context, v any)     { c.JSON(http.StatusOK, v) }
-func created(c *gin.Context, v any) { c.JSON(http.StatusCreated, v) }
-func accepted(c *gin.Context, v any) { c.JSON(http.StatusAccepted, v) }
+func ok(c *gin.Context, v any)     { c.JSON(http.StatusOK, gin.H{"data": v}) }
+func created(c *gin.Context, v any) { c.JSON(http.StatusCreated, gin.H{"data": v}) }
+func accepted(c *gin.Context, v any) { c.JSON(http.StatusAccepted, gin.H{"data": v}) }
 
 func parseLimit(c *gin.Context, def, maxV int) (int, error) {
 	raw := c.Query("limit")

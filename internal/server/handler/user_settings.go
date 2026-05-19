@@ -3,16 +3,18 @@ package handler
 import (
 	"github.com/gin-gonic/gin"
 
+	"myai-novel-go/internal/config"
 	usersettings "myai-novel-go/internal/domain/user_settings"
 	"myai-novel-go/internal/server/middleware"
 )
 
 type UserSettingsHandler struct {
+	cfg *config.Config
 	svc *usersettings.Service
 }
 
-func NewUserSettingsHandler(svc *usersettings.Service) *UserSettingsHandler {
-	return &UserSettingsHandler{svc: svc}
+func NewUserSettingsHandler(cfg *config.Config, svc *usersettings.Service) *UserSettingsHandler {
+	return &UserSettingsHandler{cfg: cfg, svc: svc}
 }
 
 func (h *UserSettingsHandler) Register(r *gin.RouterGroup) {
@@ -29,7 +31,7 @@ func (h *UserSettingsHandler) get(c *gin.Context) {
 		middleware.AbortWithError(c, err)
 		return
 	}
-	ok(c, out)
+	ok(c, buildUserRuntimeSettingsView(h.cfg, out))
 }
 
 func (h *UserSettingsHandler) update(c *gin.Context) {
@@ -44,7 +46,7 @@ func (h *UserSettingsHandler) update(c *gin.Context) {
 		middleware.AbortWithError(c, err)
 		return
 	}
-	ok(c, out)
+	ok(c, buildUserRuntimeSettingsView(h.cfg, out))
 }
 
 func (h *UserSettingsHandler) clear(c *gin.Context) {
@@ -53,5 +55,5 @@ func (h *UserSettingsHandler) clear(c *gin.Context) {
 		middleware.AbortWithError(c, err)
 		return
 	}
-	ok(c, gin.H{"ok": true})
+	ok(c, buildUserRuntimeSettingsView(h.cfg, &usersettings.RuntimeOverrides{}))
 }

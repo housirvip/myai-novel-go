@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"myai-novel-go/internal/db/models"
 	"myai-novel-go/internal/llm"
 )
 
@@ -33,13 +34,98 @@ func TestEntityTypeBonus_OnlyWhenRuleHeavyAndLexical(t *testing.T) {
 	require.Equal(t, 0.03, entityTypeBonus("faction", 0.5, true))
 }
 
+func TestJoinNonEmpty(t *testing.T) {
+	got := joinNonEmpty([]string{" 姓名:林夜 ", "别名:", "", "状态: active", "\t关键词:剑修\t"})
+	require.Equal(t, "姓名:林夜\n状态: active\n关键词:剑修", got)
+}
+
+func TestBuildEntityTextHelpers(t *testing.T) {
+	targetChapterNo := 7
+	status := "active"
+	notes := "补充说明"
+	keywords := "林夜,剑修"
+	alias := "小夜"
+	personality := "冷静"
+	category := "门派"
+	description := "势力描述"
+	ownerType := "none"
+	rarity := "rare"
+	hookType := "mystery"
+	hookDesc := "黑铁令引出变故"
+	importance := "high"
+	categoryWS := "地理"
+	content := "山门云雾缭绕"
+	relationDesc := "师徒关系"
+	relationStatus := "active"
+
+	cases := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{
+			name: "character",
+			got: buildCharacterText(models.Character{
+				Name: "林夜", Alias: &alias, Personality: &personality, Status: status,
+				AppendNotes: &notes, Keywords: &keywords,
+			}),
+			want: "姓名:林夜\n别名:小夜\n性格:冷静\n状态:active\n备注:补充说明\n关键词:林夜,剑修",
+		},
+		{
+			name: "faction",
+			got: buildFactionText(models.Faction{
+				Name: "青岳宗", Category: &category, Description: &description, Status: &status,
+				AppendNotes: &notes, Keywords: &keywords,
+			}),
+			want: "势力:青岳宗\n类别:门派\n描述:势力描述\n状态:active\n备注:补充说明\n关键词:林夜,剑修",
+		},
+		{
+			name: "item",
+			got: buildItemText(models.Item{
+				Name: "黑铁令", Category: &category, Description: &description, OwnerType: ownerType,
+				Rarity: &rarity, Status: &status, AppendNotes: &notes, Keywords: &keywords,
+			}),
+			want: "物品:黑铁令\n类别:门派\n描述:势力描述\n归属:none\n稀有度:rare\n状态:active\n备注:补充说明\n关键词:林夜,剑修",
+		},
+		{
+			name: "hook with target",
+			got: buildHookText(models.StoryHook{
+				Title: "黑铁令异常", HookType: &hookType, Description: &hookDesc, Importance: &importance,
+				Status: "open", TargetChapterNo: &targetChapterNo, AppendNotes: &notes, Keywords: &keywords,
+			}),
+			want: "钩子:黑铁令异常\n类型:mystery\n描述:黑铁令引出变故\n重要度:high\n状态:open\ntarget_chapter_no=7\n备注:补充说明\n关键词:林夜,剑修",
+		},
+		{
+			name: "world setting",
+			got: buildWorldSettingText(models.WorldSetting{
+				Title: "山门", Category: categoryWS, Content: content, AppendNotes: &notes, Keywords: &keywords,
+			}),
+			want: "设定:山门\n类别:地理\n内容:山门云雾缭绕\n备注:补充说明\n关键词:林夜,剑修",
+		},
+		{
+			name: "relation",
+			got: buildRelationText(models.Relation{
+				RelationType: "师徒", SourceType: "character", SourceID: 1, TargetType: "character", TargetID: 2,
+				Description: &relationDesc, Status: &relationStatus, AppendNotes: &notes, Keywords: &keywords,
+			}),
+			want: "关系类型:师徒\n源:character#1\n目标:character#2\n描述:师徒关系\n状态:active\n备注:补充说明\n关键词:林夜,剑修",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, tc.got)
+		})
+	}
+}
+
 // fakeEmbedding 把 token list 用第一个字符的 byte 偏移映射到 16 维向量,
 // 跑测试时不依赖任何 provider,但产生稳定的相似度排序。
 type fakeEmbedding struct{ dim int }
 
-func (f *fakeEmbedding) Dimensions() int                      { return f.dim }
-func (f *fakeEmbedding) Model() string                        { return "fake" }
-func (f *fakeEmbedding) ProviderName() llm.EmbeddingProvider  { return llm.EmbeddingProviderHash }
+func (f *fakeEmbedding) Dimensions() int                     { return f.dim }
+func (f *fakeEmbedding) Model() string                       { return "fake" }
+func (f *fakeEmbedding) ProviderName() llm.EmbeddingProvider { return llm.EmbeddingProviderHash }
 func (f *fakeEmbedding) Embed(_ context.Context, in []string) ([][]float32, error) {
 	out := make([][]float32, len(in))
 	for i, s := range in {

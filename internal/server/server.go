@@ -93,7 +93,7 @@ func New(cfg *config.Config, logger *zap.Logger, gdb *gorm.DB) *Server {
 	handler.NewWorkflowHandler(planWF, draftWF, reviewWF, repairWF, approveWF, stageWF, taskSvc).Register(root)
 	handler.NewEmbeddingHandler(gdb, retrievalSvc).Register(root)
 	handler.NewAuthHandler(cfg, authSvc).Register(root)
-	handler.NewUserSettingsHandler(userSettingsSvc).Register(root)
+	handler.NewUserSettingsHandler(cfg, userSettingsSvc).Register(root)
 
 	r.NoRoute(func(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"code": "not_found", "message": "Route not found: " + c.Request.Method + " " + c.Request.URL.Path}})

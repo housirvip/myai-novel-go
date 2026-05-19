@@ -23,15 +23,22 @@ func TestServerSmoke(t *testing.T) {
 		"title": "测试书", "targetChapterCount": 100,
 	})
 	require.Equal(t, http.StatusCreated, status, string(body))
-	var book struct{ ID int64 }
+	var book struct{ Data struct{ ID int64 } }
 	testutil.MustUnmarshal(t, body, &book)
-	require.NotZero(t, book.ID)
+	require.NotZero(t, book.Data.ID)
 
 	// create chapter
 	status, body = testutil.MustPostJSON(t, base, "/api/books/1/chapters", map[string]any{
 		"chapterNo": 1, "title": "起势",
 	})
 	require.Equal(t, http.StatusCreated, status, string(body))
+	var chapter struct {
+		Data struct {
+			ChapterNo int `json:"chapterNo"`
+		}
+	}
+	testutil.MustUnmarshal(t, body, &chapter)
+	require.Equal(t, 1, chapter.Data.ChapterNo)
 
 	// 给 chapter 1 添加一些设定方便检索
 	for _, p := range []map[string]any{
@@ -53,9 +60,9 @@ func TestServerSmoke(t *testing.T) {
 
 	status, body = testutil.MustGet(t, base, "/api/books/1/chapters/1/lifecycle")
 	require.Equal(t, http.StatusOK, status)
-	var life struct{ Status string }
+	var life struct{ Data struct{ Status string } }
 	testutil.MustUnmarshal(t, body, &life)
-	require.Equal(t, "approved", life.Status)
+	require.Equal(t, "approved", life.Data.Status)
 }
 
 // TestEmbeddingDisabled 默认 PLANNING_RETRIEVAL_EMBEDDING_PROVIDER=none,
@@ -72,7 +79,7 @@ func TestEmbeddingRefresh_DisabledByDefault(t *testing.T) {
 // TestEmbeddingRefresh_HashProvider:启用 hash provider,书没设定时刷新应返回空 map。
 func TestEmbeddingRefresh_HashProvider(t *testing.T) {
 	srv, _ := testutil.NewTestServer(t, map[string]string{
-		"PLANNING_RETRIEVAL_EMBEDDING_PROVIDER":   "hash",
+		"PLANNING_RETRIEVAL_EMBEDDING_PROVIDER":    "hash",
 		"PLANNING_RETRIEVAL_EMBEDDING_SEARCH_MODE": "basic",
 	})
 	status, _ := testutil.MustPostJSON(t, srv.URL, "/api/books", map[string]any{"title": "T"})
@@ -85,10 +92,12 @@ func TestEmbeddingRefresh_HashProvider(t *testing.T) {
 	status, body := testutil.MustPostJSON(t, srv.URL, "/api/books/1/embeddings/refresh", map[string]any{})
 	require.Equal(t, http.StatusOK, status, string(body))
 	var resp struct {
-		Refreshed map[string]int
-		Model     string
+		Data struct {
+			Refreshed map[string]int
+			Model     string
+		}
 	}
 	testutil.MustUnmarshal(t, body, &resp)
-	require.Equal(t, 1, resp.Refreshed["character"])
-	require.Equal(t, "deterministic-hash-32", resp.Model)
+	require.Equal(t, 1, resp.Data.Refreshed["character"])
+	require.Equal(t, "deterministic-hash-32", resp.Data.Model)
 }

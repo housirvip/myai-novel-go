@@ -50,3 +50,63 @@ func TestRunner_ShutdownCancelsInflight(t *testing.T) {
 	r.Shutdown(shutdownCtx)
 	require.Eventually(t, func() bool { return len(canceled) == 2 }, time.Second, 10*time.Millisecond)
 }
+
+func TestNewRunner_DefaultWorkerCount(t *testing.T) {
+	r := NewRunner(zap.NewNop(), 0)
+	defer r.Shutdown(context.Background())
+	require.Equal(t, 4, r.workers)
+	require.NotNil(t, r.queue)
+}
+
+func TestRunner_SubmitAfterShutdownIsIgnored(t *testing.T) {
+	r := NewRunner(zap.NewNop(), 1)
+	r.Shutdown(context.Background())
+	var ran int32
+	r.Submit(func(context.Context) {
+		atomic.AddInt32(&ran, 1)
+	})
+	time.Sleep(50 * time.Millisecond)
+	require.Equal(t, int32(0), atomic.LoadInt32(&ran))
+}
+
+func TestRunner_SaturatedQueueFallsBackToGoroutine(t *testing.T) {
+	r := NewRunner(zap.NewNop(), 1)
+
+	blocked := make(chan struct{})
+	release := make(chan struct{})
+	r.Submit(func(ctx context.Context) {
+		close(blocked)
+		<-release
+		_ = ctx
+	})
+	<-blocked
+
+	for i := 0; i < 8; i++ {
+		r.Submit(func(context.Context) {})
+	}
+
+	var ran int32
+	r.Submit(func(context.Context) {
+		atomic.AddInt32(&ran, 1)
+	})
+
+	require.Eventually(t, func() bool {
+		return atomic.LoadInt32(&ran) == 1
+	}, time.Second, 10*time.Millisecond)
+
+	close(release)
+	r.Shutdown(context.Background())
+}
+
+func TestRunner_PanicIsRecovered(t *testing.T) {
+	r := NewRunner(zap.NewNop(), 1)
+	defer r.Shutdown(context.Background())
+	var ran int32
+	r.Submit(func(context.Context) {
+		atomic.AddInt32(&ran, 1)
+		panic("boom")
+	})
+	require.Eventually(t, func() bool {
+		return atomic.LoadInt32(&ran) == 1
+	}, time.Second, 10*time.Millisecond)
+}

@@ -27,12 +27,14 @@ func TestBookOwnership(t *testing.T) {
 		`{"title":"Alice 的书","targetChapterCount":10}`)
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var aliceBook struct {
-		ID          int64 `json:"id"`
-		OwnerUserID int64 `json:"ownerUserId"`
+		Data struct {
+			ID          int64 `json:"id"`
+			OwnerUserID int64 `json:"ownerUserId"`
+		}
 	}
 	mustDecode(t, resp, &aliceBook)
-	require.NotZero(t, aliceBook.ID)
-	require.NotZero(t, aliceBook.OwnerUserID, "登录用户创建的 book 应自动归属本人")
+	require.NotZero(t, aliceBook.Data.ID)
+	require.NotZero(t, aliceBook.Data.OwnerUserID, "登录用户创建的 book 应自动归属本人")
 
 	// 3) bob 注册
 	bobCookie := registerAndCookie(t, base, "bob@example.com", "hunter22hunter22", "Bob")
@@ -40,22 +42,22 @@ func TestBookOwnership(t *testing.T) {
 	// 4) bob list 不到 alice 的 book
 	resp = doAuthed(t, base, bobCookie, "GET", "/api/books", "")
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	var bobList []struct{ ID int64 }
+	var bobList struct{ Data []struct{ ID int64 } }
 	mustDecode(t, resp, &bobList)
-	for _, b := range bobList {
-		require.NotEqual(t, aliceBook.ID, b.ID, "bob 不应能看到 alice 的 book")
+	for _, b := range bobList.Data {
+		require.NotEqual(t, aliceBook.Data.ID, b.ID, "bob 不应能看到 alice 的 book")
 	}
 
 	// 5) bob 直接 GET alice 的 book → 403
-	resp = doAuthed(t, base, bobCookie, "GET", path("/api/books/%d", aliceBook.ID), "")
+	resp = doAuthed(t, base, bobCookie, "GET", path("/api/books/%d", aliceBook.Data.ID), "")
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 
 	// 6) bob 改 alice 的 book → 403
-	resp = doAuthed(t, base, bobCookie, "PATCH", path("/api/books/%d", aliceBook.ID), `{"title":"hijack"}`)
+	resp = doAuthed(t, base, bobCookie, "PATCH", path("/api/books/%d", aliceBook.Data.ID), `{"title":"hijack"}`)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 
 	// 7) alice 自己仍能看到/改
-	resp = doAuthed(t, base, aliceCookie, "GET", path("/api/books/%d", aliceBook.ID), "")
+	resp = doAuthed(t, base, aliceCookie, "GET", path("/api/books/%d", aliceBook.Data.ID), "")
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
@@ -69,15 +71,17 @@ func TestAnonymousBook_BackwardCompat(t *testing.T) {
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var b struct {
-		ID          int64  `json:"id"`
-		OwnerUserID *int64 `json:"ownerUserId"`
+		Data struct {
+			ID          int64  `json:"id"`
+			OwnerUserID *int64 `json:"ownerUserId"`
+		}
 	}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&b))
-	require.NotZero(t, b.ID)
-	require.Nil(t, b.OwnerUserID, "匿名创建的 book owner_user_id 应为 nil")
+	require.NotZero(t, b.Data.ID)
+	require.Nil(t, b.Data.OwnerUserID, "匿名创建的 book owner_user_id 应为 nil")
 
 	// 匿名再 GET 该 book 仍 200
-	resp2, err := http.Get(srv.URL + path("/api/books/%d", b.ID))
+	resp2, err := http.Get(srv.URL + path("/api/books/%d", b.Data.ID))
 	require.NoError(t, err)
 	defer resp2.Body.Close()
 	require.Equal(t, http.StatusOK, resp2.StatusCode)
@@ -90,9 +94,9 @@ func TestHealthzReady(t *testing.T) {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	var body struct{ Status string }
+	var body struct{ Data struct{ Status string } }
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
-	require.Equal(t, "ready", body.Status)
+	require.Equal(t, "ready", body.Data.Status)
 }
 
 // ----- helpers -----
