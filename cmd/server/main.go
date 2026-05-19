@@ -51,12 +51,6 @@ func main() {
 	rootCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if recovered, err := srv.TaskService().RecoverInterrupted(rootCtx); err != nil {
-		zlog.Error("workflow.task.recover_failed", zap.Error(err))
-	} else if recovered > 0 {
-		zlog.Warn("workflow.task.recovered", zap.Int64("count", recovered))
-	}
-
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {

@@ -351,8 +351,12 @@ type WorkflowTask struct {
 	ChapterID       int64   `gorm:"column:chapter_id;not null" json:"chapterId"`
 	ChapterNo       int     `gorm:"column:chapter_no;not null;index:idx_workflow_tasks_book_chapter_type,priority:2;index:idx_workflow_tasks_book_chapter_created,priority:2" json:"chapterNo"`
 	WorkflowType    string  `gorm:"column:workflow_type;type:varchar(32);not null;index:idx_workflow_tasks_book_chapter_type,priority:3" json:"workflowType"`
-	Status          string  `gorm:"column:status;type:varchar(32);not null;index:idx_workflow_tasks_status_updated,priority:1" json:"status"`
+	Status          string  `gorm:"column:status;type:varchar(32);not null;index:idx_workflow_tasks_status_updated,priority:1;index:idx_workflow_tasks_status_scheduled,priority:1" json:"status"`
 	Stage           *string `gorm:"column:stage;type:varchar(64)" json:"stage"`
+	ScheduledAt     string  `gorm:"column:scheduled_at;type:varchar(32);not null;default:'';index:idx_workflow_tasks_status_scheduled,priority:2" json:"scheduledAt"`
+	LeaseOwner      *string `gorm:"column:lease_owner;type:varchar(255)" json:"leaseOwner"`
+	LeaseToken      *string `gorm:"column:lease_token;type:varchar(255)" json:"leaseToken"`
+	LeaseExpiresAt  *string `gorm:"column:lease_expires_at" json:"leaseExpiresAt"`
 	RequestPayload  string  `gorm:"column:request_payload;type:longtext;not null" json:"requestPayload"`
 	ResultPayload   *string `gorm:"column:result_payload;type:longtext" json:"resultPayload"`
 	CurrentPlanID   *int64  `gorm:"column:current_plan_id" json:"currentPlanId"`

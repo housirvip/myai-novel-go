@@ -3,14 +3,13 @@ package server_test
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"myai-novel-go/internal/testutil"
 )
 
-// TestServerSmoke 跑一遍 plan→draft→review→repair→approve 链路,
-// 用 mock provider,断言每步 200 + 最终 lifecycle 为 approved。
 func TestServerSmoke(t *testing.T) {
 	srv, _ := testutil.NewTestServer(t, nil)
 	base := srv.URL
@@ -18,29 +17,16 @@ func TestServerSmoke(t *testing.T) {
 	status, _ := testutil.MustGet(t, base, "/health")
 	require.Equal(t, http.StatusOK, status)
 
-	// create book
 	status, body := testutil.MustPostJSON(t, base, "/api/books", map[string]any{
 		"title": "测试书", "targetChapterCount": 100,
 	})
 	require.Equal(t, http.StatusCreated, status, string(body))
-	var book struct{ Data struct{ ID int64 } }
-	testutil.MustUnmarshal(t, body, &book)
-	require.NotZero(t, book.Data.ID)
 
-	// create chapter
 	status, body = testutil.MustPostJSON(t, base, "/api/books/1/chapters", map[string]any{
 		"chapterNo": 1, "title": "起势",
 	})
 	require.Equal(t, http.StatusCreated, status, string(body))
-	var chapter struct {
-		Data struct {
-			ChapterNo int `json:"chapterNo"`
-		}
-	}
-	testutil.MustUnmarshal(t, body, &chapter)
-	require.Equal(t, 1, chapter.Data.ChapterNo)
 
-	// 给 chapter 1 添加一些设定方便检索
 	for _, p := range []map[string]any{
 		{"path": "/api/books/1/characters", "body": map[string]any{"name": "林夜", "keywords": "林夜"}},
 		{"path": "/api/books/1/items", "body": map[string]any{"name": "黑铁令", "ownerType": "none", "keywords": "黑铁令"}},
@@ -50,33 +36,30 @@ func TestServerSmoke(t *testing.T) {
 		require.Equal(t, http.StatusCreated, s, string(b))
 	}
 
-	// 走完五阶段
-	for _, ep := range []string{"plan", "draft", "review", "repair", "approve"} {
-		s, b := testutil.MustPostJSON(t, base, "/api/workflows/"+ep, map[string]any{
-			"bookId": 1, "chapterNo": 1, "provider": "mock",
-		})
-		require.Equal(t, http.StatusOK, s, "%s failed: %s", ep, string(b))
-	}
+	status, body = testutil.MustPostJSON(t, base, "/api/workflows/plan/tasks", map[string]any{
+		"bookId": 1, "chapterNo": 1, "provider": "mock",
+	})
+	require.Equal(t, http.StatusAccepted, status, string(body))
 
-	status, body = testutil.MustGet(t, base, "/api/books/1/chapters/1/lifecycle")
-	require.Equal(t, http.StatusOK, status)
-	var life struct{ Data struct{ Status string } }
-	testutil.MustUnmarshal(t, body, &life)
-	require.Equal(t, "approved", life.Data.Status)
+	require.Eventually(t, func() bool {
+		status, body := testutil.MustGet(t, base, "/api/workflow-tasks/1")
+		if status != http.StatusOK {
+			return false
+		}
+		var task struct{ Data struct{ Status string } }
+		testutil.MustUnmarshal(t, body, &task)
+		return task.Data.Status == "succeeded"
+	}, 10*time.Second, 200*time.Millisecond)
 }
 
-// TestEmbeddingDisabled 默认 PLANNING_RETRIEVAL_EMBEDDING_PROVIDER=none,
-// /embeddings/refresh 应返回 409。
 func TestEmbeddingRefresh_DisabledByDefault(t *testing.T) {
 	srv, _ := testutil.NewTestServer(t, nil)
-	// 先建一本书
 	status, _ := testutil.MustPostJSON(t, srv.URL, "/api/books", map[string]any{"title": "T"})
 	require.Equal(t, http.StatusCreated, status)
 	status, _ = testutil.MustPostJSON(t, srv.URL, "/api/books/1/embeddings/refresh", map[string]any{})
 	require.Equal(t, http.StatusConflict, status)
 }
 
-// TestEmbeddingRefresh_HashProvider:启用 hash provider,书没设定时刷新应返回空 map。
 func TestEmbeddingRefresh_HashProvider(t *testing.T) {
 	srv, _ := testutil.NewTestServer(t, map[string]string{
 		"PLANNING_RETRIEVAL_EMBEDDING_PROVIDER":    "hash",

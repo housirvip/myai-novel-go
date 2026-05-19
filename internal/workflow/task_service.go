@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -23,6 +22,7 @@ type TaskView struct {
 	WorkflowType    string      `json:"workflowType"`
 	Status          string      `json:"status"`
 	Stage           *string     `json:"stage"`
+	ScheduledAt     string      `json:"scheduledAt"`
 	ProgressPercent *int        `json:"progressPercent"`
 	StartedAt       *string     `json:"startedAt"`
 	FinishedAt      *string     `json:"finishedAt"`
@@ -36,7 +36,6 @@ type TaskView struct {
 
 type Service struct {
 	db     *gorm.DB
-	runner *Runner
 	logger *zap.Logger
 
 	plan         *workflows.PlanWorkflow
@@ -48,12 +47,12 @@ type Service struct {
 }
 
 func NewService(
-	db *gorm.DB, runner *Runner, logger *zap.Logger,
+	db *gorm.DB, logger *zap.Logger,
 	plan *workflows.PlanWorkflow, draft *workflows.DraftWorkflow,
 	review *workflows.ReviewWorkflow, repair *workflows.RepairWorkflow,
 	approve *workflows.ApproveWorkflow, stageSummary *workflows.StageSummaryWorkflow,
 ) *Service {
-	return &Service{db: db, runner: runner, logger: logger,
+	return &Service{db: db, logger: logger,
 		plan: plan, draft: draft, review: review, repair: repair, approve: approve, stageSummary: stageSummary}
 }
 
@@ -82,116 +81,174 @@ func (s *Service) GetLatest(ctx context.Context, bookID int64, chapterNo int, ta
 }
 
 func (s *Service) StartPlan(ctx context.Context, in workflows.PlanInput) (*TaskView, error) {
-	return s.startTask(ctx, in.BookID, in.ChapterNo, shared.WorkflowTaskTypePlan, in, func(ctx context.Context, notify workflows.StageNotifier) (any, error) {
-		return s.plan.Run(ctx, in, notify)
-	})
+	return s.startTask(ctx, in.BookID, in.ChapterNo, shared.WorkflowTaskTypePlan, in)
 }
 
 func (s *Service) StartDraft(ctx context.Context, in workflows.DraftInput) (*TaskView, error) {
-	return s.startTask(ctx, in.BookID, in.ChapterNo, shared.WorkflowTaskTypeDraft, in, func(ctx context.Context, notify workflows.StageNotifier) (any, error) {
-		return s.draft.Run(ctx, in, notify)
-	})
+	return s.startTask(ctx, in.BookID, in.ChapterNo, shared.WorkflowTaskTypeDraft, in)
 }
 
 func (s *Service) StartReview(ctx context.Context, in workflows.ReviewInput) (*TaskView, error) {
-	return s.startTask(ctx, in.BookID, in.ChapterNo, shared.WorkflowTaskTypeReview, in, func(ctx context.Context, notify workflows.StageNotifier) (any, error) {
-		return s.review.Run(ctx, in, notify)
-	})
+	return s.startTask(ctx, in.BookID, in.ChapterNo, shared.WorkflowTaskTypeReview, in)
 }
 
 func (s *Service) StartRepair(ctx context.Context, in workflows.RepairInput) (*TaskView, error) {
-	return s.startTask(ctx, in.BookID, in.ChapterNo, shared.WorkflowTaskTypeRepair, in, func(ctx context.Context, notify workflows.StageNotifier) (any, error) {
-		return s.repair.Run(ctx, in, notify)
-	})
+	return s.startTask(ctx, in.BookID, in.ChapterNo, shared.WorkflowTaskTypeRepair, in)
 }
 
 func (s *Service) StartApprove(ctx context.Context, in workflows.ApproveInput) (*TaskView, error) {
-	return s.startTask(ctx, in.BookID, in.ChapterNo, shared.WorkflowTaskTypeApprove, in, func(ctx context.Context, notify workflows.StageNotifier) (any, error) {
-		return s.approve.Run(ctx, in, notify)
-	})
+	return s.startTask(ctx, in.BookID, in.ChapterNo, shared.WorkflowTaskTypeApprove, in)
 }
 
 func (s *Service) StartAuthorIntent(ctx context.Context, in workflows.AuthorIntentInput) (*TaskView, error) {
-	return s.startTask(ctx, in.BookID, in.ChapterNo, shared.WorkflowTaskTypeAuthorIntent, in, func(ctx context.Context, notify workflows.StageNotifier) (any, error) {
-		return s.plan.GenerateAuthorIntent(ctx, in, notify)
-	})
+	return s.startTask(ctx, in.BookID, in.ChapterNo, shared.WorkflowTaskTypeAuthorIntent, in)
 }
 
-func (s *Service) startTask(
-	ctx context.Context, bookID int64, chapterNo int, taskType string,
-	payload any, exec func(ctx context.Context, notify workflows.StageNotifier) (any, error),
-) (*TaskView, error) {
+func (s *Service) startTask(ctx context.Context, bookID int64, chapterNo int, taskType string, payload any) (*TaskView, error) {
 	var chapter models.Chapter
 	if err := s.db.WithContext(ctx).Where("book_id = ? AND chapter_no = ?", bookID, chapterNo).First(&chapter).Error; err != nil {
 		return nil, shared.NotFound(fmt.Sprintf("chapter not found: book=%d, chapter=%d", bookID, chapterNo))
 	}
 	var active models.WorkflowTask
-	err := s.db.WithContext(ctx).Where("book_id = ? AND chapter_no = ? AND status IN ?", bookID, chapterNo, []string{shared.WorkflowTaskStatusPending, shared.WorkflowTaskStatusRunning}).
+	err := s.db.WithContext(ctx).
+		Where("book_id = ? AND chapter_no = ? AND status IN ?", bookID, chapterNo, []string{shared.WorkflowTaskStatusPending, shared.WorkflowTaskStatusClaimed, shared.WorkflowTaskStatusRunning}).
 		Order("id DESC").First(&active).Error
 	if err == nil {
 		return nil, shared.Conflict("workflow task already running", map[string]any{"taskId": active.ID, "workflowType": active.WorkflowType})
 	}
+
 	now := shared.NowISO()
 	payloadStr := mustJSON(payload)
 	stage := shared.WorkflowStageQueued
 	row := models.WorkflowTask{
-		BookID: bookID, ChapterID: chapter.ID, ChapterNo: chapterNo,
-		WorkflowType: taskType, Status: shared.WorkflowTaskStatusPending,
-		Stage: &stage, RequestPayload: payloadStr,
-		AttemptCount: 1, CreatedAt: now, UpdatedAt: now,
+		BookID:         bookID,
+		ChapterID:      chapter.ID,
+		ChapterNo:      chapterNo,
+		WorkflowType:   taskType,
+		Status:         shared.WorkflowTaskStatusPending,
+		Stage:          &stage,
+		ScheduledAt:    now,
+		RequestPayload: payloadStr,
+		AttemptCount:   1,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 	if err := s.db.WithContext(ctx).Create(&row).Error; err != nil {
 		return nil, err
 	}
-
-	taskID := row.ID
-	if err := s.runner.Submit(func(runCtx context.Context) {
-		s.executeAsync(runCtx, taskID, exec)
-	}); err != nil {
-		s.markFailed(ctx, taskID, runnerSubmitError(err))
-		return nil, runnerSubmitError(err)
-	}
 	return toView(&row), nil
 }
 
-func (s *Service) executeAsync(ctx context.Context, taskID int64, exec func(ctx context.Context, notify workflows.StageNotifier) (any, error)) {
-	now := shared.NowISO()
-	startedAt := now
-	if err := s.db.WithContext(ctx).Model(&models.WorkflowTask{}).Where("id = ?", taskID).Updates(map[string]any{
-		"status":     shared.WorkflowTaskStatusRunning,
-		"started_at": startedAt,
-		"updated_at": now,
-	}).Error; err != nil {
-		s.logger.Error("workflow.task.start_failed", zap.Int64("taskId", taskID), zap.Error(err))
-		return
+func (s *Service) ExecuteClaimedTask(ctx context.Context, taskID int64, leaseToken, workflowType, payload string) error {
+	s.logger.Info("workflow.task.worker_start", zap.Int64("taskId", taskID), zap.String("workflowType", workflowType))
+	if err := s.markRunning(ctx, taskID, leaseToken); err != nil {
+		s.logger.Warn("workflow.task.worker_start_failed", zap.Int64("taskId", taskID), zap.String("workflowType", workflowType), zap.Error(err))
+		return err
 	}
+	s.logger.Info("workflow.task.running", zap.Int64("taskId", taskID), zap.String("workflowType", workflowType))
 
 	var lastStage string
 	var lastProgress *int
-
 	notify := func(stage string, progress *int) error {
 		if stage == lastStage && progEq(progress, lastProgress) {
 			return nil
 		}
 		lastStage = stage
 		lastProgress = progress
-		updates := map[string]any{
-			"stage":      stage,
-			"updated_at": shared.NowISO(),
-		}
-		if progress != nil {
-			updates["progress_percent"] = *progress
-		}
-		return s.db.WithContext(ctx).Model(&models.WorkflowTask{}).Where("id = ?", taskID).Updates(updates).Error
+		s.logger.Info("workflow.task.progress", zap.Int64("taskId", taskID), zap.String("workflowType", workflowType), zap.String("stage", stage), zap.Any("progress", progress))
+		return s.notifyProgress(ctx, taskID, stage, progress)
 	}
 
-	result, err := exec(ctx, notify)
+	result, err := s.runWorkflow(ctx, workflowType, payload, notify)
 	if err != nil {
 		s.markFailed(ctx, taskID, err)
-		s.logger.Error("workflow.task.failed", zap.Int64("taskId", taskID), zap.Error(err))
-		return
+		s.logger.Error("workflow.task.failed", zap.Int64("taskId", taskID), zap.String("workflowType", workflowType), zap.Error(err))
+		return err
 	}
 	s.markSucceeded(ctx, taskID, result)
+	s.logger.Info("workflow.task.succeeded", zap.Int64("taskId", taskID), zap.String("workflowType", workflowType))
+	return nil
+}
+
+func (s *Service) runWorkflow(ctx context.Context, workflowType, payload string, notify workflows.StageNotifier) (any, error) {
+	switch workflowType {
+	case shared.WorkflowTaskTypePlan:
+		var in workflows.PlanInput
+		if err := json.Unmarshal([]byte(payload), &in); err != nil {
+			return nil, err
+		}
+		return s.plan.Run(ctx, in, notify)
+	case shared.WorkflowTaskTypeDraft:
+		var in workflows.DraftInput
+		if err := json.Unmarshal([]byte(payload), &in); err != nil {
+			return nil, err
+		}
+		return s.draft.Run(ctx, in, notify)
+	case shared.WorkflowTaskTypeReview:
+		var in workflows.ReviewInput
+		if err := json.Unmarshal([]byte(payload), &in); err != nil {
+			return nil, err
+		}
+		return s.review.Run(ctx, in, notify)
+	case shared.WorkflowTaskTypeRepair:
+		var in workflows.RepairInput
+		if err := json.Unmarshal([]byte(payload), &in); err != nil {
+			return nil, err
+		}
+		return s.repair.Run(ctx, in, notify)
+	case shared.WorkflowTaskTypeApprove:
+		var in workflows.ApproveInput
+		if err := json.Unmarshal([]byte(payload), &in); err != nil {
+			return nil, err
+		}
+		return s.approve.Run(ctx, in, notify)
+	case shared.WorkflowTaskTypeAuthorIntent:
+		var in workflows.AuthorIntentInput
+		if err := json.Unmarshal([]byte(payload), &in); err != nil {
+			return nil, err
+		}
+		return s.plan.GenerateAuthorIntent(ctx, in, notify)
+	default:
+		return nil, fmt.Errorf("unsupported workflow type: %s", workflowType)
+	}
+}
+
+func (s *Service) markRunning(ctx context.Context, taskID int64, leaseToken string) error {
+	now := shared.NowISO()
+	res := s.db.WithContext(ctx).Model(&models.WorkflowTask{}).Where(
+		"id = ? AND status = ? AND lease_token = ?",
+		taskID, shared.WorkflowTaskStatusClaimed, leaseToken,
+	).Updates(map[string]any{
+		"status":           shared.WorkflowTaskStatusRunning,
+		"started_at":       now,
+		"lease_owner":      nil,
+		"lease_token":      nil,
+		"lease_expires_at": nil,
+		"updated_at":       now,
+	})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return shared.Conflict("task is no longer claimable", map[string]any{"taskId": taskID})
+	}
+	s.logger.Info("workflow.task.mark_running", zap.Int64("taskId", taskID))
+	return nil
+}
+
+func (s *Service) notifyProgress(ctx context.Context, taskID int64, stage string, progress *int) error {
+	updates := map[string]any{
+		"stage":      stage,
+		"updated_at": shared.NowISO(),
+	}
+	if progress != nil {
+		updates["progress_percent"] = *progress
+	}
+	res := s.db.WithContext(ctx).Model(&models.WorkflowTask{}).Where("id = ? AND status = ?", taskID, shared.WorkflowTaskStatusRunning).Updates(updates)
+	if res.Error != nil {
+		return res.Error
+	}
+	return nil
 }
 
 func (s *Service) markSucceeded(ctx context.Context, taskID int64, result any) {
@@ -205,6 +262,9 @@ func (s *Service) markSucceeded(ctx context.Context, taskID int64, result any) {
 		"progress_percent": progress,
 		"finished_at":      now,
 		"updated_at":       now,
+		"lease_owner":      nil,
+		"lease_token":      nil,
+		"lease_expires_at": nil,
 	}
 	if planID != nil {
 		updates["current_plan_id"] = *planID
@@ -212,9 +272,11 @@ func (s *Service) markSucceeded(ctx context.Context, taskID int64, result any) {
 	if draftID != nil {
 		updates["current_draft_id"] = *draftID
 	}
-	if err := s.db.WithContext(ctx).Model(&models.WorkflowTask{}).Where("id = ?", taskID).Updates(updates).Error; err != nil {
+	if err := s.db.WithContext(ctx).Model(&models.WorkflowTask{}).Where("id = ? AND status = ?", taskID, shared.WorkflowTaskStatusRunning).Updates(updates).Error; err != nil {
 		s.logger.Error("workflow.task.finalize_failed", zap.Int64("taskId", taskID), zap.Error(err))
+		return
 	}
+	s.logger.Info("workflow.task.mark_succeeded", zap.Int64("taskId", taskID))
 }
 
 func (s *Service) markFailed(ctx context.Context, taskID int64, err error) {
@@ -232,19 +294,23 @@ func (s *Service) markFailed(ctx context.Context, taskID int64, err error) {
 		}
 	}
 	updates := map[string]any{
-		"status":        shared.WorkflowTaskStatusFailed,
-		"error_code":    code,
-		"error_message": message,
-		"error_details": details,
-		"finished_at":   now,
-		"updated_at":    now,
+		"status":           shared.WorkflowTaskStatusFailed,
+		"error_code":       code,
+		"error_message":    message,
+		"error_details":    details,
+		"finished_at":      now,
+		"updated_at":       now,
+		"lease_owner":      nil,
+		"lease_token":      nil,
+		"lease_expires_at": nil,
 	}
-	if e := s.db.WithContext(ctx).Model(&models.WorkflowTask{}).Where("id = ?", taskID).Updates(updates).Error; e != nil {
+	if e := s.db.WithContext(ctx).Model(&models.WorkflowTask{}).Where("id = ? AND status = ?", taskID, shared.WorkflowTaskStatusRunning).Updates(updates).Error; e != nil {
 		s.logger.Error("workflow.task.fail_persist_failed", zap.Int64("taskId", taskID), zap.Error(e))
+		return
 	}
+	s.logger.Info("workflow.task.mark_failed", zap.Int64("taskId", taskID), zap.String("code", code))
 }
 
-// List 列出某章节的全部 workflow_tasks(按 id DESC),用于 UI 显示历史。
 func (s *Service) List(ctx context.Context, bookID int64, chapterNo int, limit int) ([]*TaskView, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
@@ -262,24 +328,24 @@ func (s *Service) List(ctx context.Context, bookID int64, chapterNo int, limit i
 	return out, nil
 }
 
-// Terminate 把 pending/running 状态的任务直接标 failed,error_code=terminated_by_user。
-// 不主动 cancel goroutine(因为 ctx 是从 runner 共享的);worker 跑完会发现 task 状态被更新,
-// 之后的 markSucceeded/markFailed 会被覆盖 —— 接受这点轻微竞争换来零额外锁开销。
 func (s *Service) Terminate(ctx context.Context, taskID int64) (*TaskView, error) {
 	view, err := s.Get(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}
-	if view.Status != shared.WorkflowTaskStatusPending && view.Status != shared.WorkflowTaskStatusRunning {
-		return nil, shared.Conflict("task is not pending/running, cannot terminate", map[string]any{"status": view.Status})
+	if view.Status != shared.WorkflowTaskStatusPending && view.Status != shared.WorkflowTaskStatusClaimed && view.Status != shared.WorkflowTaskStatusRunning {
+		return nil, shared.Conflict("task is not pending/claimed/running, cannot terminate", map[string]any{"status": view.Status})
 	}
 	now := shared.NowISO()
 	updates := map[string]any{
-		"status":        shared.WorkflowTaskStatusFailed,
-		"error_code":    "terminated_by_user",
-		"error_message": "Task terminated by user",
-		"finished_at":   now,
-		"updated_at":    now,
+		"status":           shared.WorkflowTaskStatusFailed,
+		"error_code":       "terminated_by_user",
+		"error_message":    "Task terminated by user",
+		"finished_at":      now,
+		"updated_at":       now,
+		"lease_owner":      nil,
+		"lease_token":      nil,
+		"lease_expires_at": nil,
 	}
 	if err := s.db.WithContext(ctx).Model(&models.WorkflowTask{}).Where("id = ?", taskID).Updates(updates).Error; err != nil {
 		return nil, err
@@ -287,12 +353,22 @@ func (s *Service) Terminate(ctx context.Context, taskID int64) (*TaskView, error
 	return s.Get(ctx, taskID)
 }
 
-// RecoverInterrupted 在进程启动时把残留的 pending/running 任务标 failed,
-// 防止 UI 永远显示 running 而后端早已不在执行。
 func (s *Service) RecoverInterrupted(ctx context.Context) (int64, error) {
 	now := shared.NowISO()
+	var total int64
+	if err := s.db.WithContext(ctx).Model(&models.WorkflowTask{}).
+		Where("status = ?", shared.WorkflowTaskStatusClaimed).
+		Updates(map[string]any{
+			"status":           shared.WorkflowTaskStatusPending,
+			"lease_owner":      nil,
+			"lease_token":      nil,
+			"lease_expires_at": nil,
+			"updated_at":       now,
+		}).Error; err != nil {
+		return total, err
+	}
 	res := s.db.WithContext(ctx).Model(&models.WorkflowTask{}).
-		Where("status IN ?", []string{shared.WorkflowTaskStatusPending, shared.WorkflowTaskStatusRunning}).
+		Where("status = ?", shared.WorkflowTaskStatusRunning).
 		Updates(map[string]any{
 			"status":        shared.WorkflowTaskStatusFailed,
 			"error_code":    "process_restart",
@@ -307,7 +383,7 @@ func toView(row *models.WorkflowTask) *TaskView {
 	v := &TaskView{
 		ID: row.ID, BookID: row.BookID, ChapterID: row.ChapterID, ChapterNo: row.ChapterNo,
 		WorkflowType: row.WorkflowType, Status: row.Status, Stage: row.Stage,
-		ProgressPercent: row.ProgressPercent, StartedAt: row.StartedAt, FinishedAt: row.FinishedAt,
+		ScheduledAt: row.ScheduledAt, ProgressPercent: row.ProgressPercent, StartedAt: row.StartedAt, FinishedAt: row.FinishedAt,
 		CurrentPlanID: row.CurrentPlanID, CurrentDraftID: row.CurrentDraftID,
 		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
@@ -350,23 +426,6 @@ func progEq(a, b *int) bool {
 	return *a == *b
 }
 
-func runnerSubmitError(err error) error {
-	var qErr *QueueFullError
-	switch {
-	case errors.As(err, &qErr):
-		return shared.NewAppErrorWithDetails(http.StatusServiceUnavailable, "workflow_queue_full", "workflow queue is full", map[string]any{
-			"workers":  qErr.Workers,
-			"queueLen": qErr.QueueLen,
-			"queueCap": qErr.QueueCap,
-		})
-	case errors.Is(err, ErrRunnerClosed):
-		return shared.NewAppError(http.StatusServiceUnavailable, "workflow_runner_closed", "workflow runner is shutting down")
-	default:
-		return shared.Internal("workflow submission failed")
-	}
-}
-
-// extractPointerIDs 从结果中找 planId / draftId(reflection-free 路径)
 func extractPointerIDs(result any) (*int64, *int64) {
 	switch v := result.(type) {
 	case *workflows.PlanOutput:
@@ -378,6 +437,8 @@ func extractPointerIDs(result any) (*int64, *int64) {
 	case *workflows.RepairOutput:
 		return nil, &v.DraftID
 	case *workflows.ApproveOutput:
+		return nil, nil
+	case *workflows.AuthorIntentOutput:
 		return nil, nil
 	}
 	return nil, nil
