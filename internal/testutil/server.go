@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -14,8 +15,6 @@ import (
 	"myai-novel-go/internal/server"
 )
 
-// NewTestServer 启一个用 mock LLM provider + 临时 SQLite 的 httptest.Server。
-// cfgOverrides 在 Load 之前用 t.Setenv 设置;返回 server + cleanup。
 func NewTestServer(t *testing.T, envOverrides map[string]string) (*httptest.Server, *config.Config) {
 	t.Helper()
 	t.Setenv("DB_CLIENT", "sqlite")
@@ -45,12 +44,17 @@ func NewTestServer(t *testing.T, envOverrides map[string]string) (*httptest.Serv
 		t.Fatalf("db.Migrate: %v", err)
 	}
 	srv := server.New(cfg, zlog, gdb)
+	rootCtx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(func() {
+		cancel()
+		srv.Shutdown(context.Background())
+	})
+	srv.Start(rootCtx)
 	httpSrv := httptest.NewServer(srv.Handler())
 	t.Cleanup(httpSrv.Close)
 	return httpSrv, cfg
 }
 
-// MustPostJSON 包一层 JSON marshal + POST,返回响应体字节。
 func MustPostJSON(t *testing.T, base, path string, payload any) (int, []byte) {
 	t.Helper()
 	body, err := json.Marshal(payload)
@@ -77,7 +81,6 @@ func MustGet(t *testing.T, base, path string) (int, []byte) {
 	return resp.StatusCode, out
 }
 
-// MustUnmarshal panics 测试,期望 JSON 解析成功。
 func MustUnmarshal(t *testing.T, raw []byte, into any) {
 	t.Helper()
 	if err := json.Unmarshal(raw, into); err != nil {

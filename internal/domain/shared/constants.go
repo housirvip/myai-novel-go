@@ -33,6 +33,7 @@ const (
 
 const (
 	WorkflowTaskStatusPending   = "pending"
+	WorkflowTaskStatusClaimed   = "claimed"
 	WorkflowTaskStatusRunning   = "running"
 	WorkflowTaskStatusSucceeded = "succeeded"
 	WorkflowTaskStatusFailed    = "failed"
