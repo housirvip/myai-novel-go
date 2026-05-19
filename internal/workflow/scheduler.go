@@ -2,7 +2,6 @@ package workflow
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -127,19 +126,21 @@ func (s *Scheduler) dispatchDue(ctx context.Context) error {
 func (s *Scheduler) claimNextDue(ctx context.Context) (*models.WorkflowTask, string, error) {
 	now := shared.NowISO()
 	for {
-		var row models.WorkflowTask
-		if err := s.db.WithContext(ctx).
+		var rows []models.WorkflowTask
+		res := s.db.WithContext(ctx).
 			Where("status = ? AND scheduled_at <= ? AND (lease_expires_at IS NULL OR lease_expires_at < ?)", shared.WorkflowTaskStatusPending, now, now).
-			Order("scheduled_at ASC, id ASC").First(&row).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil, "", nil
-			}
-			return nil, "", err
+			Order("scheduled_at ASC, id ASC").Limit(1).Find(&rows)
+		if res.Error != nil {
+			return nil, "", res.Error
 		}
+		if res.RowsAffected == 0 {
+			return nil, "", nil
+		}
+		row := rows[0]
 
 		leaseToken := fmt.Sprintf("%s-%d", s.bossID, row.ID)
 		leaseExpires := time.Now().UTC().Add(s.leaseTTL).Format(shared.TimeLayout)
-		res := s.db.WithContext(ctx).Model(&models.WorkflowTask{}).Where(
+		claimRes := s.db.WithContext(ctx).Model(&models.WorkflowTask{}).Where(
 			"id = ? AND status = ? AND scheduled_at <= ? AND (lease_expires_at IS NULL OR lease_expires_at < ?)",
 			row.ID, shared.WorkflowTaskStatusPending, now, now,
 		).Updates(map[string]any{
@@ -149,10 +150,10 @@ func (s *Scheduler) claimNextDue(ctx context.Context) (*models.WorkflowTask, str
 			"lease_expires_at": leaseExpires,
 			"updated_at":       shared.NowISO(),
 		})
-		if res.Error != nil {
-			return nil, "", res.Error
+		if claimRes.Error != nil {
+			return nil, "", claimRes.Error
 		}
-		if res.RowsAffected == 0 {
+		if claimRes.RowsAffected == 0 {
 			continue
 		}
 		s.logger.Info("workflow.scheduler.lease_claimed", zap.Int64("taskId", row.ID), zap.String("workflowType", row.WorkflowType), zap.String("bossId", s.bossID), zap.String("leaseExpiresAt", leaseExpires))
