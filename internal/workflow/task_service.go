@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -144,9 +145,12 @@ func (s *Service) startTask(
 	}
 
 	taskID := row.ID
-	s.runner.Submit(func(runCtx context.Context) {
+	if err := s.runner.Submit(func(runCtx context.Context) {
 		s.executeAsync(runCtx, taskID, exec)
-	})
+	}); err != nil {
+		s.markFailed(ctx, taskID, runnerSubmitError(err))
+		return nil, runnerSubmitError(err)
+	}
 	return toView(&row), nil
 }
 
@@ -344,6 +348,22 @@ func progEq(a, b *int) bool {
 		return a == b
 	}
 	return *a == *b
+}
+
+func runnerSubmitError(err error) error {
+	var qErr *QueueFullError
+	switch {
+	case errors.As(err, &qErr):
+		return shared.NewAppErrorWithDetails(http.StatusServiceUnavailable, "workflow_queue_full", "workflow queue is full", map[string]any{
+			"workers":  qErr.Workers,
+			"queueLen": qErr.QueueLen,
+			"queueCap": qErr.QueueCap,
+		})
+	case errors.Is(err, ErrRunnerClosed):
+		return shared.NewAppError(http.StatusServiceUnavailable, "workflow_runner_closed", "workflow runner is shutting down")
+	default:
+		return shared.Internal("workflow submission failed")
+	}
 }
 
 // extractPointerIDs 从结果中找 planId / draftId(reflection-free 路径)

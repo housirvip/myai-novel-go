@@ -2,13 +2,27 @@ package workflow
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 
 	"go.uber.org/zap"
 )
 
+var ErrRunnerClosed = errors.New("workflow runner closed")
+
+type QueueFullError struct {
+	Workers  int
+	QueueLen int
+	QueueCap int
+}
+
+func (e *QueueFullError) Error() string {
+	return fmt.Sprintf("workflow queue full: workers=%d queue=%d/%d", e.Workers, e.QueueLen, e.QueueCap)
+}
+
 // Runner 是简单的 goroutine 池 + 队列,负责执行后台 workflow tasks。
-// 这里使用带缓冲的 chan 避免在突发提交时阻塞 HTTP 请求路径。
+// 这里使用带缓冲的 chan 作为有界队列,超过上限时直接拒绝提交。
 type Runner struct {
 	logger     *zap.Logger
 	queue      chan func(context.Context)
@@ -61,28 +75,19 @@ func (r *Runner) worker(id int) {
 	}
 }
 
-// Submit 把任务投递给 worker pool,如果队列满会丢入新 goroutine 兜底,保证 HTTP 路径不阻塞。
-func (r *Runner) Submit(fn func(context.Context)) {
+// Submit 把任务投递给 worker pool,队列满时直接返回错误。
+func (r *Runner) Submit(fn func(context.Context)) error {
 	r.closeMu.Lock()
-	closed := r.closed
-	r.closeMu.Unlock()
-	if closed {
-		return
+	defer r.closeMu.Unlock()
+	if r.closed {
+		return ErrRunnerClosed
 	}
 	select {
 	case r.queue <- fn:
+		return nil
 	default:
-		// 队列饱和时退化为独立 goroutine,避免拒绝任务
-		r.wg.Add(1)
-		go func() {
-			defer r.wg.Done()
-			defer func() {
-				if rec := recover(); rec != nil {
-					r.logger.Error("workflow.runner.panic", zap.Any("panic", rec))
-				}
-			}()
-			fn(r.rootCtx)
-		}()
+		r.logger.Warn("workflow.runner.queue_full", zap.Int("workers", r.workers), zap.Int("queueLen", len(r.queue)), zap.Int("queueCap", cap(r.queue)))
+		return &QueueFullError{Workers: r.workers, QueueLen: len(r.queue), QueueCap: cap(r.queue)}
 	}
 }
 

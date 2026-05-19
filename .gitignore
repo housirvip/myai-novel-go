@@ -13,6 +13,7 @@ bin/
 data/*.db
 data/*.db-shm
 data/*.db-wal
+cmd/server/data
 
 # Logs
 logs/

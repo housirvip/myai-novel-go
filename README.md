@@ -213,8 +213,39 @@ curl localhost:3000/api/books/1/chapters/1/lifecycle
 
 ### 异步 worker pool
 - `internal/workflow/runner.go` 用带缓冲 chan + N 个 worker(`WORKFLOW_MAX_CONCURRENCY`,默认 4)。
-- 队列饱和时退化为独立 goroutine,避免拒绝任务。
+- `WORKFLOW_MAX_CONCURRENCY` 现在是严格并发上限;队列打满时返回 `workflow_queue_full`(HTTP 503),不会再偷偷起额外 goroutine。
 - 进程关停时 cancel root context,worker 见到 ctx.Done 立即退出。
+
+### `WORKFLOW_MAX_CONCURRENCY` 推荐值
+- SQLite: 推荐 `1~2`;只有在确认写竞争、`database is locked` 和任务排队都可接受时再升到 `3~4`。
+- MySQL: 推荐从 `4` 起步,常见可用区间是 `4~8`。
+- `DB_POOL_MAX` 至少应高于 `WORKFLOW_MAX_CONCURRENCY`;保守建议预留 `+2~4` 连接给登录、资源 CRUD 和轮询接口。
+- `LLM_RATE_LIMIT_RPS` 也要高于并发数;若单个 workflow 常包含多次 LLM 调用,建议把 `WORKFLOW_MAX_CONCURRENCY` 控制在 `LLM_RATE_LIMIT_RPS / 2` 以内作为起步值。
+- 如果你看到大量 `workflow_queue_full`,优先先看数据库和 LLM 是否已成瓶颈,不要只靠继续调大并发。
+
+| 场景 | DB_CLIENT | WORKFLOW_MAX_CONCURRENCY | DB_POOL_MAX | LLM_RATE_LIMIT_RPS | 说明 |
+|---|---|---:|---:|---:|---|
+| 本地开发 / SQLite + mock | `sqlite` | `1` | `4` | `10` | 最稳妥,适合单人开发和调试 workflow 链路 |
+| 本地开发 / SQLite + 真 LLM | `sqlite` | `2` | `6` | `8~12` | 先保守限制写竞争,把并发留给 LLM 往返耗时 |
+| 小规模部署 / MySQL | `mysql` | `4` | `8` | `12~20` | 默认推荐组合,适合少量用户并发触发章节工作流 |
+| 中等吞吐 / MySQL | `mysql` | `6` | `12` | `20~30` | 只有在 DB 和 LLM 都稳定时再升到这一档 |
+| 偏高吞吐 / MySQL | `mysql` | `8` | `16` | `30+` | 需要重点监控排队、慢查询和 provider 限流,不要直接跳到更高 |
+
+可直接参考的 `.env` 组合:
+
+```dotenv
+# SQLite 开发环境
+DB_CLIENT=sqlite
+DB_POOL_MAX=4
+WORKFLOW_MAX_CONCURRENCY=1
+LLM_RATE_LIMIT_RPS=10
+
+# MySQL 小规模部署
+DB_CLIENT=mysql
+DB_POOL_MAX=8
+WORKFLOW_MAX_CONCURRENCY=4
+LLM_RATE_LIMIT_RPS=16
+```
 
 ### Pointer 守卫
 每个工作流在事务内会再读一次 chapter,与 LLM 调用前的快照对比 `currentPlanId/DraftId/ReviewId/FinalId`,
